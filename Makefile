@@ -9,4 +9,4 @@ build:
 	cd ./$(CMD); go build -o $(BIN)
 
 run: build
-	./$(CMD)/$(BIN) -b $(BLOB_BUCKET) -k $(BLOB_KEY)
+	./$(CMD)/$(BIN) -b $(BLOB_BUCKET) -k $(BLOB_KEY) -e gz
