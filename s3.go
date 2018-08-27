@@ -11,16 +11,19 @@ import (
 	"github.com/pkg/errors"
 )
 
+const region = "ap-northeast-1"
+
 type S3 struct {
 }
 
 func (s *S3) Read(w io.WriterAt) error {
 	// default setting only
-	sess := session.Must(session.NewSession())
+	var r = region
+	sess := session.Must(session.NewSession(&aws.Config{Region: &r}))
 	downloader := s3manager.NewDownloader(sess)
 	obj := &s3.GetObjectInput{
 		Bucket: aws.String(os.Getenv("BLOB_BUCKET")),
-		Key:    aws.String("sample.txt"),
+		Key:    aws.String(os.Getenv("BLOB_KEY")),
 	}
 
 	err := download(obj, w, sess, downloader)

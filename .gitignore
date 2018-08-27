@@ -1,2 +1,4 @@
 cmd/cmd
+cmd/bc
+
 vendor
