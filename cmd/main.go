@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"log"
 	"os"
@@ -9,11 +10,11 @@ import (
 	"github.com/midorigreen/blobcat"
 )
 
-func run() error {
-	s3 := &blobcat.S3{}
+func run(bucket, key string) error {
+	s3 := blobcat.NewBlobS3()
 	buf := make([]byte, 1000)
 	bufAt := aws.NewWriteAtBuffer(buf)
-	err := s3.Read(bufAt)
+	err := s3.Read(bufAt, bucket, key)
 	if err != nil {
 		return err
 	}
@@ -22,7 +23,11 @@ func run() error {
 }
 
 func main() {
-	if err := run(); err != nil {
+	bucket := flag.String("b", "", "bucket name")
+	key := flag.String("k", "", "key name")
+	flag.Parse()
+
+	if err := run(*bucket, *key); err != nil {
 		log.Fatal(err)
 	}
 }

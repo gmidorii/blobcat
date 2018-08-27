@@ -1,3 +1,7 @@
 package blobcat
 
-type BlobReader interface{}
+import "io"
+
+type BlobReader interface {
+	Read(w io.WriterAt, bucket, key string) error
+}

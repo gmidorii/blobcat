@@ -2,7 +2,6 @@ package blobcat
 
 import (
 	"io"
-	"os"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
@@ -13,17 +12,21 @@ import (
 
 const region = "ap-northeast-1"
 
-type S3 struct {
+type blobs3 struct {
 }
 
-func (s *S3) Read(w io.WriterAt) error {
+func NewBlobS3() BlobReader {
+	return &blobs3{}
+}
+
+func (s *blobs3) Read(w io.WriterAt, bucket, key string) error {
 	// default setting only
 	var r = region
 	sess := session.Must(session.NewSession(&aws.Config{Region: &r}))
 	downloader := s3manager.NewDownloader(sess)
 	obj := &s3.GetObjectInput{
-		Bucket: aws.String(os.Getenv("BLOB_BUCKET")),
-		Key:    aws.String(os.Getenv("BLOB_KEY")),
+		Bucket: aws.String(bucket),
+		Key:    aws.String(key),
 	}
 
 	err := download(obj, w, sess, downloader)
