@@ -17,7 +17,9 @@ import (
 const (
 	region  = "ap-northeast-1"
 	bufSize = 1000
-	gzExt   = "gz"
+
+	// extention
+	gzExt = "gz"
 )
 
 type blobs3 struct {
@@ -55,21 +57,26 @@ func (s *blobs3) ReadWrite(w io.Writer) error {
 			return errors.Wrap(err, "download error")
 		}
 
-		switch s.ext {
-		case gzExt:
-			rb := bytes.NewBuffer(bufAt.Bytes())
-			gr, err := gzip.NewReader(rb)
-			if err != nil {
-				return err
-			}
-			defer gr.Close()
-
-			io.Copy(w, gr)
-		default:
-			fmt.Fprint(w, string(bufAt.Bytes()))
-		}
+		writeExt(s.ext, bufAt, w)
 	}
 
+	return nil
+}
+
+func writeExt(ext string, in *aws.WriteAtBuffer, out io.Writer) error {
+	switch ext {
+	case gzExt:
+		rb := bytes.NewBuffer(in.Bytes())
+		gin, err := gzip.NewReader(rb)
+		if err != nil {
+			return err
+		}
+		defer gin.Close()
+
+		io.Copy(out, gin)
+	default:
+		fmt.Fprint(out, string(in.Bytes()))
+	}
 	return nil
 }
 
