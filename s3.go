@@ -5,7 +5,6 @@ import (
 	"compress/gzip"
 	"fmt"
 	"io"
-	"os"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
@@ -36,46 +35,39 @@ func NewBlobS3(bucket, key, ext string) BlobReader {
 }
 
 func (s *blobs3) ReadWrite(w io.Writer) error {
-	// default setting only
-	buf := make([]byte, bufSize)
-	bufAt := aws.NewWriteAtBuffer(buf)
-
 	var r = region
 	sess := session.Must(session.NewSession(&aws.Config{Region: &r}))
 	result, err := listObjects(s.bucket, s.key, sess)
 	if err != nil {
 		return err
 	}
-	batchInputs := make([]s3manager.BatchDownloadObject, *result.KeyCount)
-	for i, v := range result.Contents {
-		batchInputs[i] = s3manager.BatchDownloadObject{
-			Object: &s3.GetObjectInput{
-				Bucket: aws.String(s.bucket),
-				Key:    v.Key,
-			},
-			Writer: bufAt,
-		}
-	}
-
-	iter := &s3manager.DownloadObjectsIterator{Objects: batchInputs}
 	downloader := s3manager.NewDownloader(sess)
-
-	if err := downloader.DownloadWithIterator(aws.BackgroundContext(), iter); err != nil {
-		return errors.Wrap(err, "download error")
-	}
-
-	switch s.ext {
-	case gzExt:
-		rb := bytes.NewBuffer(bufAt.Bytes())
-		gr, err := gzip.NewReader(rb)
-		if err != nil {
-			return err
+	for _, v := range result.Contents {
+		input := &s3.GetObjectInput{
+			Bucket: aws.String(s.bucket),
+			Key:    v.Key,
 		}
-		defer gr.Close()
 
-		io.Copy(os.Stdout, gr)
-	default:
-		fmt.Fprint(os.Stdout, string(bufAt.Bytes()))
+		buf := make([]byte, bufSize)
+		bufAt := aws.NewWriteAtBuffer(buf)
+		err := download(input, bufAt, sess, downloader)
+		if err != nil {
+			return errors.Wrap(err, "download error")
+		}
+
+		switch s.ext {
+		case gzExt:
+			rb := bytes.NewBuffer(bufAt.Bytes())
+			gr, err := gzip.NewReader(rb)
+			if err != nil {
+				return err
+			}
+			defer gr.Close()
+
+			io.Copy(w, gr)
+		default:
+			fmt.Fprint(w, string(bufAt.Bytes()))
+		}
 	}
 
 	return nil
