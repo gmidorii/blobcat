@@ -6,7 +6,6 @@ import (
 	"io"
 	"log"
 	"sync"
-	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
@@ -45,7 +44,9 @@ func (s *blobs3) ReadWrite(w io.Writer) error {
 	if err != nil {
 		return err
 	}
-	downloader := s3manager.NewDownloader(sess)
+	downloader := s3manager.NewDownloader(sess, func(d *s3manager.Downloader) {
+		d.Concurrency = 1
+	})
 	for _, v := range result.Contents {
 		rp, wp := io.Pipe()
 		sw := NewS3Write(wp)
@@ -78,16 +79,13 @@ func writeExt(ext string, in io.Reader, out io.Writer) error {
 		}
 		defer gin.Close()
 
-		fmt.Fprintf(out, "COPY START\n")
-		n, err := io.Copy(out, gin)
-		fmt.Fprintf(out, "\nCOPY READ BYTE: %v\n", n)
+		_, err = io.Copy(out, gin)
 		if err != nil {
 			return errors.Wrap(err, "gzip copy error")
 		}
 	default:
 		return errors.New("not implements ext")
 	}
-	time.Sleep(2 * time.Second)
 	return nil
 }
 
@@ -120,7 +118,6 @@ func download(obj *s3.GetObjectInput, w io.WriterAt, sess *session.Session, down
 	if err != nil {
 		return errors.Wrap(err, "failed downloader download")
 	}
-	fmt.Println("COPY download num: %n", n)
 	return nil
 }
 
