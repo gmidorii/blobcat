@@ -24,14 +24,14 @@ const (
 
 type blobs3 struct {
 	bucket string `require:"true"`
-	key    string `require:"true"`
+	prefix string `require:"true"`
 	ext    string
 }
 
-func NewBlobS3(bucket, key, ext string) BlobReader {
+func NewBlobS3(bucket, prefix, ext string) BlobReader {
 	return &blobs3{
 		bucket: bucket,
-		key:    key,
+		prefix: prefix,
 		ext:    ext,
 	}
 }
@@ -39,7 +39,7 @@ func NewBlobS3(bucket, key, ext string) BlobReader {
 func (s *blobs3) ReadWrite(w io.Writer) error {
 	var r = region
 	sess := session.Must(session.NewSession(&aws.Config{Region: &r}))
-	result, err := listObjects(s.bucket, s.key, sess)
+	result, err := listObjects(s.bucket, s.prefix, sess)
 	if err != nil {
 		return err
 	}
@@ -50,7 +50,7 @@ func (s *blobs3) ReadWrite(w io.Writer) error {
 			Key:    v.Key,
 		}
 
-		buf := make([]byte, bufSize)
+		buf := make([]byte, *v.Size)
 		bufAt := aws.NewWriteAtBuffer(buf)
 		err := download(input, bufAt, sess, downloader)
 		if err != nil {
@@ -80,11 +80,11 @@ func writeExt(ext string, in *aws.WriteAtBuffer, out io.Writer) error {
 	return nil
 }
 
-func listObjects(bucket, key string, sess *session.Session) (*s3.ListObjectsV2Output, error) {
+func listObjects(bucket, prefix string, sess *session.Session) (*s3.ListObjectsV2Output, error) {
 	svc := s3.New(sess)
 	input := &s3.ListObjectsV2Input{
 		Bucket: aws.String(bucket),
-		Prefix: aws.String(key),
+		Prefix: aws.String(prefix),
 	}
 
 	result, err := svc.ListObjectsV2(input)

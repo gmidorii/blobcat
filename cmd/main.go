@@ -8,18 +8,18 @@ import (
 	"github.com/midorigreen/blobcat"
 )
 
-func run(bucket, key, ext string) error {
-	s3 := blobcat.NewBlobS3(bucket, key, ext)
+func run(bucket, prefix, ext string) error {
+	s3 := blobcat.NewBlobS3(bucket, prefix, ext)
 	return s3.ReadWrite(os.Stdout)
 }
 
 func main() {
 	bucket := flag.String("b", "", "bucket name")
-	key := flag.String("k", "", "key name")
+	prefix := flag.String("p", "", "prefix name")
 	ext := flag.String("e", "gz", "extension name")
 	flag.Parse()
 
-	if err := run(*bucket, *key, *ext); err != nil {
+	if err := run(*bucket, *prefix, *ext); err != nil {
 		log.Fatal(err)
 	}
 }
