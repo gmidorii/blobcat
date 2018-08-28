@@ -1,10 +1,12 @@
 package blobcat
 
 import (
-	"bytes"
 	"compress/gzip"
 	"fmt"
 	"io"
+	"log"
+	"sync"
+	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
@@ -45,38 +47,47 @@ func (s *blobs3) ReadWrite(w io.Writer) error {
 	}
 	downloader := s3manager.NewDownloader(sess)
 	for _, v := range result.Contents {
+		rp, wp := io.Pipe()
+		sw := NewS3Write(wp)
+
 		input := &s3.GetObjectInput{
 			Bucket: aws.String(s.bucket),
 			Key:    v.Key,
 		}
 
-		buf := make([]byte, *v.Size)
-		bufAt := aws.NewWriteAtBuffer(buf)
-		err := download(input, bufAt, sess, downloader)
-		if err != nil {
-			return errors.Wrap(err, "download error")
-		}
+		go func(input *s3.GetObjectInput, sw io.WriterAt) {
+			defer wp.Close()
+			err := download(input, sw, sess, downloader)
+			if err != nil {
+				log.Fatalf("download error : %v", err)
+			}
+		}(input, sw)
 
-		writeExt(s.ext, bufAt, w)
+		writeExt(s.ext, rp, w)
 	}
 
 	return nil
 }
 
-func writeExt(ext string, in *aws.WriteAtBuffer, out io.Writer) error {
+func writeExt(ext string, in io.Reader, out io.Writer) error {
 	switch ext {
 	case gzExt:
-		rb := bytes.NewBuffer(in.Bytes())
-		gin, err := gzip.NewReader(rb)
+		gin, err := gzip.NewReader(in)
 		if err != nil {
 			return err
 		}
 		defer gin.Close()
 
-		io.Copy(out, gin)
+		fmt.Fprintf(out, "COPY START\n")
+		n, err := io.Copy(out, gin)
+		fmt.Fprintf(out, "\nCOPY READ BYTE: %v\n", n)
+		if err != nil {
+			return errors.Wrap(err, "gzip copy error")
+		}
 	default:
-		fmt.Fprint(out, string(in.Bytes()))
+		return errors.New("not implements ext")
 	}
+	time.Sleep(2 * time.Second)
 	return nil
 }
 
@@ -105,9 +116,25 @@ func listObjects(bucket, prefix string, sess *session.Session) (*s3.ListObjectsV
 }
 
 func download(obj *s3.GetObjectInput, w io.WriterAt, sess *session.Session, downloader *s3manager.Downloader) error {
-	_, err := downloader.Download(w, obj)
+	n, err := downloader.Download(w, obj)
 	if err != nil {
 		return errors.Wrap(err, "failed downloader download")
 	}
+	fmt.Println("COPY download num: %n", n)
 	return nil
+}
+
+type S3Write struct {
+	out io.Writer
+	m   sync.Mutex
+}
+
+func NewS3Write(out io.Writer) io.WriterAt {
+	return &S3Write{out: out}
+}
+
+func (w *S3Write) WriteAt(p []byte, off int64) (n int, err error) {
+	w.m.Lock()
+	defer w.m.Unlock()
+	return w.out.Write(p)
 }
