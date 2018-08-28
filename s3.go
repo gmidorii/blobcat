@@ -16,12 +16,32 @@ import (
 )
 
 const (
-	region  = "ap-northeast-1"
-	bufSize = 1000
+	region = "ap-northeast-1"
 
 	// extention
 	gzExt = "gz"
 )
+
+type s3ReadWrite struct {
+	out io.WriteCloser
+	m   sync.Mutex
+}
+
+func NewS3ReadWrite(out io.WriteCloser) *s3ReadWrite {
+	return &s3ReadWrite{out: out}
+}
+
+func (w *s3ReadWrite) WriteAt(p []byte, off int64) (n int, err error) {
+	w.m.Lock()
+	defer w.m.Unlock()
+	return w.out.Write(p)
+}
+
+func (w *s3ReadWrite) Close() error {
+	w.m.Lock()
+	defer w.m.Unlock()
+	return w.out.Close()
+}
 
 type blobs3 struct {
 	bucket string `require:"true"`
@@ -49,15 +69,15 @@ func (s *blobs3) ReadWrite(w io.Writer) error {
 	})
 	for _, v := range result.Contents {
 		rp, wp := io.Pipe()
-		sw := NewS3Write(wp)
+		sw := NewS3ReadWrite(wp)
 
 		input := &s3.GetObjectInput{
 			Bucket: aws.String(s.bucket),
 			Key:    v.Key,
 		}
 
-		go func(input *s3.GetObjectInput, sw io.WriterAt) {
-			defer wp.Close()
+		go func(input *s3.GetObjectInput, sw *s3ReadWrite) {
+			defer sw.Close()
 			err := download(input, sw, sess, downloader)
 			if err != nil {
 				log.Fatalf("download error : %v", err)
@@ -67,25 +87,6 @@ func (s *blobs3) ReadWrite(w io.Writer) error {
 		writeExt(s.ext, rp, w)
 	}
 
-	return nil
-}
-
-func writeExt(ext string, in io.Reader, out io.Writer) error {
-	switch ext {
-	case gzExt:
-		gin, err := gzip.NewReader(in)
-		if err != nil {
-			return err
-		}
-		defer gin.Close()
-
-		_, err = io.Copy(out, gin)
-		if err != nil {
-			return errors.Wrap(err, "gzip copy error")
-		}
-	default:
-		return errors.New("not implements ext")
-	}
 	return nil
 }
 
@@ -114,24 +115,28 @@ func listObjects(bucket, prefix string, sess *session.Session) (*s3.ListObjectsV
 }
 
 func download(obj *s3.GetObjectInput, w io.WriterAt, sess *session.Session, downloader *s3manager.Downloader) error {
-	n, err := downloader.Download(w, obj)
+	_, err := downloader.Download(w, obj)
 	if err != nil {
 		return errors.Wrap(err, "failed downloader download")
 	}
 	return nil
 }
 
-type S3Write struct {
-	out io.Writer
-	m   sync.Mutex
-}
+func writeExt(ext string, in io.Reader, out io.Writer) error {
+	switch ext {
+	case gzExt:
+		gin, err := gzip.NewReader(in)
+		if err != nil {
+			return err
+		}
+		defer gin.Close()
 
-func NewS3Write(out io.Writer) io.WriterAt {
-	return &S3Write{out: out}
-}
-
-func (w *S3Write) WriteAt(p []byte, off int64) (n int, err error) {
-	w.m.Lock()
-	defer w.m.Unlock()
-	return w.out.Write(p)
+		_, err = io.Copy(out, gin)
+		if err != nil {
+			return errors.Wrap(err, "gzip copy error")
+		}
+	default:
+		return errors.New("not implements ext")
+	}
+	return nil
 }
